@@ -23,8 +23,11 @@ if not HF_API_KEY:
 bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
 
-# Создаем клиент без base_url (используется стандартный)
-hf_client = InferenceClient(token=HF_API_KEY)
+# ✅ ИСПРАВЛЕНО: Добавлен правильный base_url для router.huggingface.co
+hf_client = InferenceClient(
+    token=HF_API_KEY,
+    base_url="https://router.huggingface.co"  # Обязательно для новых версий API
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -93,7 +96,7 @@ async def ask_hf_image(prompt: str, image_bytes: bytes):
                         {
                             "type": "image_url", 
                             "image_url": {
-                                "url": image_data_url  # Исправлено: теперь правильный data URL
+                                "url": image_data_url
                             }
                         }
                     ]
