@@ -1,22 +1,24 @@
 import asyncio
 import logging
 import base64
-import os  # ✅ Обязательно добавь!
+import os
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from huggingface_hub import InferenceClient
+from aiohttp import web
 
 # --- НАСТРОЙКИ (из переменных окружения) ---
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")      # ✅ Из настроек Render
-HF_API_KEY = os.getenv("HF_API_KEY")              # ✅ Из настроек Render
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+HF_API_KEY = os.getenv("HF_API_KEY")
 
 bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
-
 hf_client = InferenceClient(token=HF_API_KEY)
+
+logging.basicConfig(level=logging.INFO)
 
 # --- МОДЕЛИ ---
 TEXT_MODEL = "Qwen/Qwen2.5-7B-Instruct"
@@ -32,13 +34,12 @@ def get_main_keyboard():
 
 # --- СОСТОЯНИЯ ---
 class TaskAction(StatesGroup):
-    waiting_for_input = State()  # Ждём фото ИЛИ текст
-    waiting_for_text = State()   # Только текст (для перефразирования/сокращения)
+    waiting_for_input = State()
+    waiting_for_text = State()
 
 # --- ФУНКЦИИ AI ---
 
 async def ask_hf_text(prompt: str):
-    """Текст через Hugging Face"""
     try:
         response = await asyncio.to_thread(
             hf_client.chat_completion,
@@ -54,10 +55,8 @@ async def ask_hf_text(prompt: str):
         return f"⚠️ Ошибка: {e}"
 
 async def ask_hf_image(prompt: str, image_bytes: bytes):
-    """Фото через Hugging Face Vision"""
     try:
         image_base64 = base64.b64encode(image_bytes).decode('utf-8')
-        
         response = await asyncio.to_thread(
             hf_client.chat_completion,
             model=VISION_MODEL,
@@ -76,6 +75,19 @@ async def ask_hf_image(prompt: str, image_bytes: bytes):
     except Exception as e:
         return f"⚠️ Ошибка обработки фото: {e}"
 
+# --- HTTP СЕРВЕР ДЛЯ RENDER ---
+async def health_handler(request):
+    return web.json_response({"status": "ok"})
+
+async def start_http_server():
+    app = web.Application()
+    app.router.add_get('/healthz', health_handler)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', 10000)
+    await site.start()
+    print("✅ HTTP-сервер запущен на порту 10000")
+
 # --- ХЕНДЛЕРЫ ---
 
 @dp.message(Command("start"))
@@ -93,40 +105,34 @@ async def cmd_start(message: types.Message):
         parse_mode="Markdown"
     )
 
-# 1. 📸 РЕШЕНИЕ ЗАДАНИЯ
 @dp.message(F.text.in_({"📸 Решение задания"}))
 async def start_solution_mode(message: types.Message, state: FSMContext):
     await state.update_data(mode="solution")
     await state.set_state(TaskAction.waiting_for_input)
     await message.answer("📷 Отправь фото задания **или напиши текст задачи**:", parse_mode="Markdown")
 
-# 2. 📖 ОБЪЯСНЕНИЕ ЗАДАНИЯ
 @dp.message(F.text.in_({"📖 Объяснение задания"}))
 async def start_explanation_mode(message: types.Message, state: FSMContext):
     await state.update_data(mode="explanation")
     await state.set_state(TaskAction.waiting_for_input)
     await message.answer("📷 Отправь фото задания **или напиши текст задачи**:", parse_mode="Markdown")
 
-# 3. ✏️ ПЕРЕФРАЗИРОВАТЬ
 @dp.message(F.text.in_({"✏️ Перефразировать"}))
 async def start_paraphrase_mode(message: types.Message, state: FSMContext):
     await state.update_data(mode="paraphrase")
     await state.set_state(TaskAction.waiting_for_text)
     await message.answer("✍️ Отправь текст, который нужно перефразировать:")
 
-# 4. ✂️ СОКРАТИТЬ
 @dp.message(F.text.in_({"✂️ Сократить"}))
 async def start_shorten_mode(message: types.Message, state: FSMContext):
     await state.update_data(mode="shorten")
     await state.set_state(TaskAction.waiting_for_text)
     await message.answer("✍️ Отправь текст, который нужно сократить:")
 
-# 5. ОБРАБОТКА ФОТО (для решений)
 @dp.message(TaskAction.waiting_for_input, F.photo)
 async def handle_task_photo(message: types.Message, state: FSMContext):
     data = await state.get_data()
     mode = data.get("mode")
-    
     photo = message.photo[-1]
     file = await bot.get_file(photo.file_id)
     photo_bytes = await bot.download_file(file.file_path)
@@ -152,10 +158,9 @@ async def handle_task_photo(message: types.Message, state: FSMContext):
         prompt = "Реши эту задачу."
     
     result = await ask_hf_image(prompt, image_data)
-    await message.answer(result)  # ✅ Без parse_mode
+    await message.answer(result)
     await state.clear()
 
-# 6. ОБРАБОТКА ТЕКСТА (для решений заданий)
 @dp.message(TaskAction.waiting_for_input, F.text)
 async def handle_task_text(message: types.Message, state: FSMContext):
     data = await state.get_data()
@@ -184,10 +189,9 @@ async def handle_task_text(message: types.Message, state: FSMContext):
         prompt = f"Реши эту задачу: {user_text}"
     
     result = await ask_hf_text(prompt)
-    await message.answer(result)  # ✅ Без parse_mode
+    await message.answer(result)
     await state.clear()
 
-# 7. ОБРАБОТКА ТЕКСТА (для перефразирования/сокращения)
 @dp.message(TaskAction.waiting_for_text, F.text)
 async def handle_text_action(message: types.Message, state: FSMContext):
     data = await state.get_data()
@@ -204,10 +208,9 @@ async def handle_text_action(message: types.Message, state: FSMContext):
         prompt = user_text
         
     result = await ask_hf_text(prompt)
-    await message.answer(result)  # ✅ Без parse_mode
+    await message.answer(result)
     await state.clear()
 
-# 8. ОБЫЧНЫЕ СООБЩЕНИЯ (не в режиме)
 @dp.message(F.photo)
 async def handle_regular_photo(message: types.Message):
     await message.answer(
@@ -237,6 +240,11 @@ async def main():
         print("✅ Hugging Face подключен!")
     except Exception as e:
         print(f"❌ Hugging Face ошибка: {e}")
+    
+    # Запускаем HTTP-сервер для Render
+    await start_http_server()
+    
+    # Запускаем бота
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
