@@ -1,0 +1,2 @@
+aiogram==3.4.0
+huggingface_hub==0.20.0
