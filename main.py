@@ -95,7 +95,8 @@ async def start_http_server():
 # --- ХЕНДЛЕРЫ ---
 
 @dp.message(Command("start"))
-async def cmd_start(message: types.Message):
+async def cmd_start(message: types.Message, state: FSMContext):
+    await state.clear()  # Сбрасываем состояние при старте
     await message.answer(
         "Привет! Я бесплатный бот-помощник для учёбы. 🚀\n\n"
         "👨‍💻 **Создатель бота:** @negative1431\n\n"
@@ -109,31 +110,7 @@ async def cmd_start(message: types.Message):
         parse_mode="Markdown"
     )
 
-# ✅ ИСПРАВЛЕНО: Простая проверка текста вместо F.text.in_
-@dp.message(F.text)
-async def handle_menu_buttons(message: types.Message, state: FSMContext):
-    text = message.text
-    
-    if text == "📸 Решение задания":
-        await state.update_data(mode="solution")
-        await state.set_state(TaskAction.waiting_for_input)
-        await message.answer("📷 Отправь фото задания **или напиши текст задачи**:", parse_mode="Markdown")
-        
-    elif text == "📖 Объяснение задания":
-        await state.update_data(mode="explanation")
-        await state.set_state(TaskAction.waiting_for_input)
-        await message.answer("📷 Отправь фото задания **или напиши текст задачи**:", parse_mode="Markdown")
-        
-    elif text == "✏️ Перефразировать":
-        await state.update_data(mode="paraphrase")
-        await state.set_state(TaskAction.waiting_for_text)
-        await message.answer("✍️ Отправь текст, который нужно перефразировать:")
-        
-    elif text == "✂️ Сократить":
-        await state.update_data(mode="shorten")
-        await state.set_state(TaskAction.waiting_for_text)
-        await message.answer("✍️ Отправь текст, который нужно сократить:")
-
+# ✅ 1. Сначала хендлеры СОСТОЯНИЙ (важно!)
 @dp.message(TaskAction.waiting_for_input, F.photo)
 async def handle_task_photo(message: types.Message, state: FSMContext):
     data = await state.get_data()
@@ -216,6 +193,32 @@ async def handle_text_action(message: types.Message, state: FSMContext):
     await message.answer(result)
     await state.clear()
 
+# ✅ 2. Потом хендлеры КНОПОК меню
+@dp.message(F.text)
+async def handle_menu_buttons(message: types.Message, state: FSMContext):
+    text = message.text
+    
+    if text == "📸 Решение задания":
+        await state.update_data(mode="solution")
+        await state.set_state(TaskAction.waiting_for_input)
+        await message.answer("📷 Отправь фото задания **или напиши текст задачи**:", parse_mode="Markdown")
+        
+    elif text == "📖 Объяснение задания":
+        await state.update_data(mode="explanation")
+        await state.set_state(TaskAction.waiting_for_input)
+        await message.answer("📷 Отправь фото задания **или напиши текст задачи**:", parse_mode="Markdown")
+        
+    elif text == "✏️ Перефразировать":
+        await state.update_data(mode="paraphrase")
+        await state.set_state(TaskAction.waiting_for_text)
+        await message.answer("✍️ Отправь текст, который нужно перефразировать:")
+        
+    elif text == "✂️ Сократить":
+        await state.update_data(mode="shorten")
+        await state.set_state(TaskAction.waiting_for_text)
+        await message.answer("✍️ Отправь текст, который нужно сократить:")
+
+# ✅ 3. В конце хендлеры для обычных сообщений
 @dp.message(F.photo)
 async def handle_regular_photo(message: types.Message):
     await message.answer(
@@ -229,6 +232,9 @@ async def handle_regular_photo(message: types.Message):
 
 # --- ЗАПУСК ---
 async def main():
+    print("⏳ Ожидание 5 секунд перед запуском...")
+    await asyncio.sleep(5)
+    
     try:
         await asyncio.to_thread(
             hf_client.chat_completion,
