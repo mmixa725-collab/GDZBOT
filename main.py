@@ -16,7 +16,12 @@ HF_API_KEY = os.getenv("HF_API_KEY")
 
 bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
-hf_client = InferenceClient(token=HF_API_KEY)
+
+# ✅ НОВЫЙ АДРЕС API (router.huggingface.co)
+hf_client = InferenceClient(
+    token=HF_API_KEY,
+    base_url="https://router.huggingface.co"
+)
 
 logging.basicConfig(level=logging.INFO)
 
