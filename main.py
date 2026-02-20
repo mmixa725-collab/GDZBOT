@@ -10,14 +10,13 @@ from aiogram.fsm.state import State, StatesGroup
 from huggingface_hub import InferenceClient
 from aiohttp import web
 
-# --- НАСТРОЙКИ (из переменных окружения) ---
+# --- НАСТРОЙКИ ---
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 HF_API_KEY = os.getenv("HF_API_KEY")
 
 bot = Bot(token=TELEGRAM_TOKEN)
 dp = Dispatcher()
 
-# ✅ НОВЫЙ АДРЕС API (router.huggingface.co)
 hf_client = InferenceClient(
     token=HF_API_KEY,
     base_url="https://router.huggingface.co"
@@ -110,29 +109,30 @@ async def cmd_start(message: types.Message):
         parse_mode="Markdown"
     )
 
-@dp.message(F.text.in_({"📸 Решение задания"}))
-async def start_solution_mode(message: types.Message, state: FSMContext):
-    await state.update_data(mode="solution")
-    await state.set_state(TaskAction.waiting_for_input)
-    await message.answer("📷 Отправь фото задания **или напиши текст задачи**:", parse_mode="Markdown")
-
-@dp.message(F.text.in_({"📖 Объяснение задания"}))
-async def start_explanation_mode(message: types.Message, state: FSMContext):
-    await state.update_data(mode="explanation")
-    await state.set_state(TaskAction.waiting_for_input)
-    await message.answer("📷 Отправь фото задания **или напиши текст задачи**:", parse_mode="Markdown")
-
-@dp.message(F.text.in_({"✏️ Перефразировать"}))
-async def start_paraphrase_mode(message: types.Message, state: FSMContext):
-    await state.update_data(mode="paraphrase")
-    await state.set_state(TaskAction.waiting_for_text)
-    await message.answer("✍️ Отправь текст, который нужно перефразировать:")
-
-@dp.message(F.text.in_({"✂️ Сократить"}))
-async def start_shorten_mode(message: types.Message, state: FSMContext):
-    await state.update_data(mode="shorten")
-    await state.set_state(TaskAction.waiting_for_text)
-    await message.answer("✍️ Отправь текст, который нужно сократить:")
+# ✅ ИСПРАВЛЕНО: Простая проверка текста вместо F.text.in_
+@dp.message(F.text)
+async def handle_menu_buttons(message: types.Message, state: FSMContext):
+    text = message.text
+    
+    if text == "📸 Решение задания":
+        await state.update_data(mode="solution")
+        await state.set_state(TaskAction.waiting_for_input)
+        await message.answer("📷 Отправь фото задания **или напиши текст задачи**:", parse_mode="Markdown")
+        
+    elif text == "📖 Объяснение задания":
+        await state.update_data(mode="explanation")
+        await state.set_state(TaskAction.waiting_for_input)
+        await message.answer("📷 Отправь фото задания **или напиши текст задачи**:", parse_mode="Markdown")
+        
+    elif text == "✏️ Перефразировать":
+        await state.update_data(mode="paraphrase")
+        await state.set_state(TaskAction.waiting_for_text)
+        await message.answer("✍️ Отправь текст, который нужно перефразировать:")
+        
+    elif text == "✂️ Сократить":
+        await state.update_data(mode="shorten")
+        await state.set_state(TaskAction.waiting_for_text)
+        await message.answer("✍️ Отправь текст, который нужно сократить:")
 
 @dp.message(TaskAction.waiting_for_input, F.photo)
 async def handle_task_photo(message: types.Message, state: FSMContext):
@@ -227,13 +227,6 @@ async def handle_regular_photo(message: types.Message):
         parse_mode="Markdown"
     )
 
-@dp.message(F.text)
-async def handle_regular_text(message: types.Message):
-    await message.answer(
-        "Выберите действие в меню 👇",
-        reply_markup=get_main_keyboard()
-    )
-
 # --- ЗАПУСК ---
 async def main():
     try:
@@ -246,10 +239,7 @@ async def main():
     except Exception as e:
         print(f"❌ Hugging Face ошибка: {e}")
     
-    # Запускаем HTTP-сервер для Render
     await start_http_server()
-    
-    # Запускаем бота
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
