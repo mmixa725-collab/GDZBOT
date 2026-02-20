@@ -92,25 +92,21 @@ async def start_http_server():
     await site.start()
     print("✅ HTTP-сервер запущен на порту 10000")
 
-# --- ХЕНДЛЕРЫ ---
+# --- ХЕНДЛЕРЫ (ВАЖНЫЙ ПОРЯДОК!) ---
 
+# 1. Команда /start
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
-    await state.clear()  # Сбрасываем состояние при старте
+    await state.clear()
     await message.answer(
         "Привет! Я бесплатный бот-помощник для учёбы. 🚀\n\n"
         "👨‍💻 **Создатель бота:** @negative1431\n\n"
-        "Я умею:\n"
-        "📸 **Решение задания** — ответ и решение (фото или текст)\n"
-        "📖 **Объяснение задания** — подробный разбор (фото или текст)\n"
-        "✏️ **Перефразировать** — изменить текст, сохранив смысл\n"
-        "✂️ **Сократить** — оставить только главное\n\n"
-        "Жми на кнопку и отправляй фото или текст!",
+        "Жми на кнопку!",
         reply_markup=get_main_keyboard(),
         parse_mode="Markdown"
     )
 
-# ✅ 1. Сначала хендлеры СОСТОЯНИЙ (важно!)
+# 2. Обработка фото в режиме задания
 @dp.message(TaskAction.waiting_for_input, F.photo)
 async def handle_task_photo(message: types.Message, state: FSMContext):
     data = await state.get_data()
@@ -123,19 +119,9 @@ async def handle_task_photo(message: types.Message, state: FSMContext):
     await message.answer("🤔 Думаю...")
     
     if mode == "solution":
-        prompt = """Реши эту задачу. 
-ВАЖНО: 
-- Пиши формулы ОБЫЧНЫМ текстом (например: 3/4, а не \\frac{3}{4})
-- Не используй LaTeX, скобки $$, \\(, \\)
-- Пиши просто: 1+1=2, x^2, sqrt(5)
-Напиши ТОЛЬКО ответ и краткое решение."""
+        prompt = "Реши эту задачу. Пиши формулы обычным текстом (3/4, x^2). Только ответ и краткое решение."
     elif mode == "explanation":
-        prompt = """Реши эту задачу. Дай ПОДРОБНОЕ объяснение каждого шага.
-ВАЖНО:
-- Пиши формулы ОБЫЧНЫМ текстом (например: 3/4, а не \\frac{3}{4})
-- Не используй LaTeX, скобки $$, \\(, \\)
-- Пиши просто: 1+1=2, x^2, sqrt(5)
-Чтобы школьник понял логику решения."""
+        prompt = "Реши эту задачу. Пиши формулы обычным текстом. Дай подробное объяснение каждого шага."
     else:
         prompt = "Реши эту задачу."
     
@@ -143,6 +129,7 @@ async def handle_task_photo(message: types.Message, state: FSMContext):
     await message.answer(result)
     await state.clear()
 
+# 3. Обработка текста в режиме задания
 @dp.message(TaskAction.waiting_for_input, F.text)
 async def handle_task_text(message: types.Message, state: FSMContext):
     data = await state.get_data()
@@ -152,21 +139,9 @@ async def handle_task_text(message: types.Message, state: FSMContext):
     await message.answer("🤔 Думаю...")
     
     if mode == "solution":
-        prompt = f"""Реши эту задачу.
-ВАЖНО:
-- Пиши формулы ОБЫЧНЫМ текстом (например: 3/4, а не \\frac{{3}}{{4}})
-- Не используй LaTeX, скобки $$, \\(, \\)
-- Пиши просто: 1+1=2, x^2, sqrt(5)
-Напиши ТОЛЬКО ответ и краткое решение.
-Задача: {user_text}"""
+        prompt = f"Реши эту задачу. Пиши формулы обычным текстом. Только ответ. Задача: {user_text}"
     elif mode == "explanation":
-        prompt = f"""Реши эту задачу. Дай ПОДРОБНОЕ объяснение каждого шага.
-ВАЖНО:
-- Пиши формулы ОБЫЧНЫМ текстом (например: 3/4, а не \\frac{{3}}{{4}})
-- Не используй LaTeX, скобки $$, \\(, \\)
-- Пиши просто: 1+1=2, x^2, sqrt(5)
-Чтобы школьник понял логику решения.
-Задача: {user_text}"""
+        prompt = f"Реши эту задачу. Пиши формулы обычным текстом. Подробное объяснение. Задача: {user_text}"
     else:
         prompt = f"Реши эту задачу: {user_text}"
     
@@ -174,6 +149,7 @@ async def handle_task_text(message: types.Message, state: FSMContext):
     await message.answer(result)
     await state.clear()
 
+# 4. Обработка текста в режиме перефразирования/сокращения
 @dp.message(TaskAction.waiting_for_text, F.text)
 async def handle_text_action(message: types.Message, state: FSMContext):
     data = await state.get_data()
@@ -183,9 +159,9 @@ async def handle_text_action(message: types.Message, state: FSMContext):
     await message.answer("⏳ Обрабатываю...")
     
     if mode == "paraphrase":
-        prompt = f"Перефразируй этот текст, сохранив смысл: {user_text}"
+        prompt = f"Перефразируй этот текст: {user_text}"
     elif mode == "shorten":
-        prompt = f"Сократи этот текст, оставив суть: {user_text}"
+        prompt = f"Сократи этот текст: {user_text}"
     else:
         prompt = user_text
         
@@ -193,7 +169,7 @@ async def handle_text_action(message: types.Message, state: FSMContext):
     await message.answer(result)
     await state.clear()
 
-# ✅ 2. Потом хендлеры КНОПОК меню
+# 5. Обработка кнопок меню (ПОСЛЕ хендлеров состояний!)
 @dp.message(F.text)
 async def handle_menu_buttons(message: types.Message, state: FSMContext):
     text = message.text
@@ -201,38 +177,34 @@ async def handle_menu_buttons(message: types.Message, state: FSMContext):
     if text == "📸 Решение задания":
         await state.update_data(mode="solution")
         await state.set_state(TaskAction.waiting_for_input)
-        await message.answer("📷 Отправь фото задания **или напиши текст задачи**:", parse_mode="Markdown")
+        await message.answer("📷 Отправь фото или текст задачи:")
         
     elif text == "📖 Объяснение задания":
         await state.update_data(mode="explanation")
         await state.set_state(TaskAction.waiting_for_input)
-        await message.answer("📷 Отправь фото задания **или напиши текст задачи**:", parse_mode="Markdown")
+        await message.answer("📷 Отправь фото или текст задачи:")
         
     elif text == "✏️ Перефразировать":
         await state.update_data(mode="paraphrase")
         await state.set_state(TaskAction.waiting_for_text)
-        await message.answer("✍️ Отправь текст, который нужно перефразировать:")
+        await message.answer("✍️ Отправь текст:")
         
     elif text == "✂️ Сократить":
         await state.update_data(mode="shorten")
         await state.set_state(TaskAction.waiting_for_text)
-        await message.answer("✍️ Отправь текст, который нужно сократить:")
+        await message.answer("✍️ Отправь текст:")
 
-# ✅ 3. В конце хендлеры для обычных сообщений
+# 6. Обычные фото (без режима)
 @dp.message(F.photo)
 async def handle_regular_photo(message: types.Message):
     await message.answer(
-        "📸 Выберите режим работы с заданием:\n"
-        "— **Решение** — только ответ\n"
-        "— **Объяснение** — подробный разбор\n\n"
-        "Нажмите на кнопку в меню ниже!",
-        reply_markup=get_main_keyboard(),
-        parse_mode="Markdown"
+        "Выберите режим в меню!",
+        reply_markup=get_main_keyboard()
     )
 
 # --- ЗАПУСК ---
 async def main():
-    print("⏳ Ожидание 5 секунд перед запуском...")
+    print("⏳ Ожидание 5 секунд...")
     await asyncio.sleep(5)
     
     try:
